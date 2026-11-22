@@ -20,21 +20,26 @@ dotenv.config();
 async function startServer() {
   const app = express();
 
-  // Use deployment platform's assigned port
+  // Use hosting platform's assigned port and host
   const PORT = Number(process.env.PORT) || 3000;
+  const HOST = process.env.HOST || '0.0.0.0';
+
+  console.log('[Startup Diagnostics]', {
+    PORT,
+    HOST,
+    NODE_ENV: process.env.NODE_ENV || 'not set',
+    PID: process.pid,
+  });
 
   app.use(cors());
   app.use(express.json());
 
-  // Initialize Database & Worker
   const db = new BotDatabase();
   const worker = new SmartBotWorker(db);
 
-  // API Routes FIRST
   const apiRouter = createApiRouter(worker);
   app.use('/api', apiRouter);
 
-  // Health check
   app.get('/api/health', (req, res) => {
     res.json({
       status: 'ok',
@@ -44,14 +49,12 @@ async function startServer() {
     });
   });
 
-  // API Catch-All
   app.all('/api/*', (req, res) => {
     res.status(404).json({
       error: `API route not found: ${req.method} ${req.originalUrl || req.url}`,
     });
   });
 
-  // Development vs Production
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
 
@@ -74,23 +77,24 @@ async function startServer() {
     });
   }
 
-  // Start server
-  const server = app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, HOST, () => {
     console.log(
-      `[Delta Smart Trading Bot] Running on port ${PORT}`
+      `[Delta Smart Trading Bot] Running on http://${HOST}:${PORT}`
     );
 
-    // Start worker after server is listening
     worker.start();
   });
 
-  server.on('error', (err) => {
-    console.error('[Delta Smart Trading Bot] Server error:', err);
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    console.error('[Delta Smart Trading Bot] Server startup failed:', err);
     process.exit(1);
   });
 }
 
 startServer().catch((err) => {
-  console.error('[Delta Smart Trading Bot] Fatal server startup error:', err);
+  console.error(
+    '[Delta Smart Trading Bot] Fatal server startup error:',
+    err
+  );
   process.exit(1);
 });
