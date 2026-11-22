@@ -20,26 +20,29 @@ dotenv.config();
 async function startServer() {
   const app = express();
 
-  // Use hosting platform's assigned port and host
-  const PORT = Number(process.env.PORT) || 3000;
-  const HOST = process.env.HOST || '0.0.0.0';
+  // Changed server port
+  const PORT = 4000;
+  const HOST = '0.0.0.0';
 
   console.log('[Startup Diagnostics]', {
     PORT,
     HOST,
-    NODE_ENV: process.env.NODE_ENV || 'not set',
+    NODE_ENV: process.env.NODE_ENV,
     PID: process.pid,
   });
 
   app.use(cors());
   app.use(express.json());
 
+  // Initialize Database & Worker
   const db = new BotDatabase();
   const worker = new SmartBotWorker(db);
 
+  // API Routes
   const apiRouter = createApiRouter(worker);
   app.use('/api', apiRouter);
 
+  // Health check
   app.get('/api/health', (req, res) => {
     res.json({
       status: 'ok',
@@ -49,12 +52,14 @@ async function startServer() {
     });
   });
 
+  // API Catch-All
   app.all('/api/*', (req, res) => {
     res.status(404).json({
       error: `API route not found: ${req.method} ${req.originalUrl || req.url}`,
     });
   });
 
+  // Development / Production frontend
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
 
@@ -77,23 +82,26 @@ async function startServer() {
     });
   }
 
+  // Start Express server
   const server = app.listen(PORT, HOST, () => {
     console.log(
       `[Delta Smart Trading Bot] Running on http://${HOST}:${PORT}`
     );
 
-    worker.start();
+    worker.start().catch((err) => {
+      console.error('[SmartBotWorker] Startup error:', err);
+    });
   });
 
   server.on('error', (err: NodeJS.ErrnoException) => {
-    console.error('[Delta Smart Trading Bot] Server startup failed:', err);
+    console.error('[Delta Smart Trading Bot] Server error:', err);
     process.exit(1);
   });
 }
 
 startServer().catch((err) => {
   console.error(
-    '[Delta Smart Trading Bot] Fatal server startup error:',
+    '[Delta Smart Trading Bot] Fatal startup error:',
     err
   );
   process.exit(1);
