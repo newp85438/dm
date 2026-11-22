@@ -20,18 +20,17 @@ dotenv.config();
 async function startServer() {
   const app = express();
 
-  // Use hosting provider's assigned port
+  // Use deployment platform's assigned port
   const PORT = Number(process.env.PORT) || 3000;
-  const HOST = '0.0.0.0';
 
   app.use(cors());
   app.use(express.json());
 
-  // Initialize database and worker
+  // Initialize Database & Worker
   const db = new BotDatabase();
   const worker = new SmartBotWorker(db);
 
-  // API routes
+  // API Routes FIRST
   const apiRouter = createApiRouter(worker);
   app.use('/api', apiRouter);
 
@@ -45,14 +44,14 @@ async function startServer() {
     });
   });
 
-  // API fallback
-  app.use('/api', (req, res) => {
+  // API Catch-All
+  app.all('/api/*', (req, res) => {
     res.status(404).json({
-      error: `API route not found: ${req.method} ${req.originalUrl}`,
+      error: `API route not found: ${req.method} ${req.originalUrl || req.url}`,
     });
   });
 
-  // Development / production frontend
+  // Development vs Production
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
 
@@ -75,52 +74,23 @@ async function startServer() {
     });
   }
 
-  // Start server only once
-  const server = app.listen(PORT, HOST, async () => {
+  // Start server
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(
-      `[Delta Smart Trading Bot] Running on ${HOST}:${PORT}`
+      `[Delta Smart Trading Bot] Running on port ${PORT}`
     );
 
-    try {
-      await worker.start();
-      console.log('[Delta Smart Trading Bot] Worker started');
-    } catch (error) {
-      console.error('[Delta Smart Trading Bot] Worker startup failed:', error);
-    }
+    // Start worker after server is listening
+    worker.start();
   });
 
-  server.on('error', (error: NodeJS.ErrnoException) => {
-    console.error('[Delta Smart Trading Bot] Server error:', error);
-
-    if (error.code === 'EADDRINUSE') {
-      console.error(`Port ${PORT} is already in use.`);
-    }
-
+  server.on('error', (err) => {
+    console.error('[Delta Smart Trading Bot] Server error:', err);
     process.exit(1);
   });
-
-  // Graceful shutdown
-  const shutdown = () => {
-    console.log('[Delta Smart Trading Bot] Shutting down...');
-
-    server.close(() => {
-      console.log('[Delta Smart Trading Bot] HTTP server closed');
-      process.exit(0);
-    });
-
-    setTimeout(() => {
-      process.exit(1);
-    }, 10000).unref();
-  };
-
-  process.once('SIGTERM', shutdown);
-  process.once('SIGINT', shutdown);
 }
 
 startServer().catch((err) => {
-  console.error(
-    '[Delta Smart Trading Bot] Fatal server startup error:',
-    err
-  );
+  console.error('[Delta Smart Trading Bot] Fatal server startup error:', err);
   process.exit(1);
 });
